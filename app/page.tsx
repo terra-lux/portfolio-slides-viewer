@@ -1,27 +1,11 @@
-import { fetchSlideNodes, fetchImageUrls } from "@/lib/figma";
 import RefreshButton from "./refresh-button";
 
-export const dynamic = "force-dynamic";
+const FIGMA_FILE_KEY = "oLIcsWKoq4cpCBvba6G7qv";
+const FIGMA_FILE_SLUG = "-2026--Portfolio_CHJ";
+const FIGMA_FILE_URL = `https://www.figma.com/deck/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}`;
+const FIGMA_EMBED_URL = `https://embed.figma.com/deck/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}?embed-host=portfolio-slides-viewer`;
 
-interface SlideView {
-  id: string;
-  name: string;
-  thumbnailUrl: string | null;
-}
-
-export default async function Home() {
-  let slides: SlideView[] = [];
-  let errorMessage: string | null = null;
-
-  try {
-    const nodes = await fetchSlideNodes();
-    const ids = nodes.map((n) => n.id);
-    const thumbnails = ids.length ? await fetchImageUrls(ids, "png", 1) : {};
-    slides = nodes.map((n) => ({ ...n, thumbnailUrl: thumbnails[n.id] ?? null }));
-  } catch (error) {
-    errorMessage = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
-  }
-
+export default function Home() {
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 20px" }}>
       <div
@@ -29,80 +13,53 @@ export default async function Home() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 24,
+          marginBottom: 20,
         }}
       >
         <h1 style={{ fontSize: 24, fontWeight: 700 }}>Portfolio Slides</h1>
-        <RefreshButton />
+        <div style={{ display: "flex", gap: 8 }}>
+          <a
+            href={FIGMA_FILE_URL}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              background: "#fff",
+              fontSize: 14,
+              textDecoration: "none",
+            }}
+          >
+            Figma에서 PDF로 내보내기
+          </a>
+          <RefreshButton />
+        </div>
       </div>
 
-      {errorMessage && (
-        <div
-          style={{
-            padding: 16,
-            background: "#fee",
-            color: "#900",
-            borderRadius: 8,
-            marginBottom: 24,
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {errorMessage}
-        </div>
-      )}
+      <p style={{ color: "#666", fontSize: 14, marginBottom: 20 }}>
+        아래 미리보기는 Figma 파일과 연결되어 있어 슬라이드를 수정하면 자동으로 반영됩니다. 슬라이드를 PDF로
+        받으려면 위의 &quot;Figma에서 PDF로 내보내기&quot; 버튼으로 이동해 Figma 화면에서{" "}
+        <strong>File → Export slides to → PDF</strong>를 사용해주세요.
+      </p>
 
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-          gap: 20,
+          position: "relative",
+          width: "100%",
+          aspectRatio: "16 / 9",
+          border: "1px solid #e5e5e5",
+          borderRadius: 12,
+          overflow: "hidden",
+          background: "#f4f4f4",
         }}
       >
-        {slides.map((slide, index) => (
-          <div
-            key={slide.id}
-            style={{ border: "1px solid #e5e5e5", borderRadius: 12, overflow: "hidden", background: "#fff" }}
-          >
-            <div style={{ aspectRatio: "16 / 9", background: "#f4f4f4" }}>
-              {slide.thumbnailUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={slide.thumbnailUrl}
-                  alt={slide.name}
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                />
-              )}
-            </div>
-            <div
-              style={{
-                padding: 12,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span style={{ fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis" }}>
-                {index + 1}. {slide.name}
-              </span>
-              <a
-                href={`/api/pdf?nodeId=${encodeURIComponent(slide.id)}&name=${encodeURIComponent(slide.name)}`}
-                style={{
-                  fontSize: 13,
-                  color: "#0070f3",
-                  textDecoration: "none",
-                  whiteSpace: "nowrap",
-                  flexShrink: 0,
-                }}
-              >
-                PDF 다운로드
-              </a>
-            </div>
-          </div>
-        ))}
+        <iframe
+          src={FIGMA_EMBED_URL}
+          allowFullScreen
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none" }}
+        />
       </div>
-
-      {!errorMessage && slides.length === 0 && <p>표시할 슬라이드가 없습니다.</p>}
     </main>
   );
 }
