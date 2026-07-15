@@ -3,7 +3,7 @@ import RefreshButton from "./refresh-button";
 const FIGMA_FILE_KEY = "oLIcsWKoq4cpCBvba6G7qv";
 const FIGMA_FILE_SLUG = "-2026--Portfolio_CHJ";
 const FIGMA_FILE_URL = `https://www.figma.com/deck/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}`;
-const FIGMA_EMBED_URL = `https://embed.figma.com/slides/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}?embed-host=portfolio-slides-viewer&footer=false&page-selector=false`;
+const FIGMA_EMBED_URL = `https://embed.figma.com/deck/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}?embed-host=portfolio-slides-viewer&viewport-controls=true`;
 
 export default function Home() {
   return (
@@ -38,8 +38,9 @@ export default function Home() {
       </div>
 
       <p style={{ color: "#666", fontSize: 14, marginBottom: 20 }}>
-        아래 미리보기는 Figma 파일과 연결되어 있어 슬라이드를 수정하면 자동으로 반영됩니다. 슬라이드를 PDF로
-        받으려면 위의 &quot;Figma에서 PDF로 내보내기&quot; 버튼으로 이동해 Figma 화면에서{" "}
+        아래 미리보기는 Figma 파일과 연결되어 있어 슬라이드를 수정하면 자동으로 반영됩니다. 미리보기 안에서 마우스
+        휠을 굴리거나 방향키를 누르면 다음/이전 슬라이드로 넘어갑니다. 슬라이드를 PDF로 받으려면 위의
+        &quot;Figma에서 PDF로 내보내기&quot; 버튼으로 이동해 Figma 화면에서{" "}
         <strong>File → Export slides to → PDF</strong>를 사용해주세요.
       </p>
 
@@ -47,7 +48,7 @@ export default function Home() {
         style={{
           position: "relative",
           width: "100%",
-          height: "80vh",
+          aspectRatio: "16 / 9",
           border: "1px solid #e5e5e5",
           borderRadius: 12,
           overflow: "hidden",
