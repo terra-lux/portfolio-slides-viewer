@@ -3,7 +3,7 @@ import RefreshButton from "./refresh-button";
 const FIGMA_FILE_KEY = "oLIcsWKoq4cpCBvba6G7qv";
 const FIGMA_FILE_SLUG = "-2026--Portfolio_CHJ";
 const FIGMA_FILE_URL = `https://www.figma.com/deck/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}`;
-const FIGMA_EMBED_URL = `https://embed.figma.com/deck/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}?embed-host=portfolio-slides-viewer`;
+const FIGMA_EMBED_URL = `https://embed.figma.com/slides/${FIGMA_FILE_KEY}/${FIGMA_FILE_SLUG}?embed-host=portfolio-slides-viewer&footer=false&page-selector=false`;
 
 export default function Home() {
   return (
@@ -47,7 +47,7 @@ export default function Home() {
         style={{
           position: "relative",
           width: "100%",
-          aspectRatio: "16 / 9",
+          height: "80vh",
           border: "1px solid #e5e5e5",
           borderRadius: 12,
           overflow: "hidden",
