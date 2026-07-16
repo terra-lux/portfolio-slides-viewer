@@ -6,11 +6,14 @@ import { SLIDES } from "@/lib/figma-slides";
 const ZOOM_MIN = 50;
 const ZOOM_MAX = 200;
 const ZOOM_STEP = 10;
+const DESKTOP_QUERY = "(min-width: 768px)";
 
 export default function Home() {
   const [zoom, setZoom] = useState(100);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [failedSlides, setFailedSlides] = useState<Record<string, boolean>>({});
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const imgRefs = useRef<(HTMLImageElement | null)[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -28,6 +31,18 @@ export default function Home() {
         markFailed(SLIDES[idx].id);
       }
     });
+  }, []);
+
+  useEffect(() => {
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    const applyMatch = (matches: boolean) => {
+      setIsDesktop(matches);
+      setSidebarOpen(matches);
+    };
+    applyMatch(mql.matches);
+    const listener = (e: MediaQueryListEvent) => applyMatch(e.matches);
+    mql.addEventListener("change", listener);
+    return () => mql.removeEventListener("change", listener);
   }, []);
 
   useEffect(() => {
@@ -54,14 +69,28 @@ export default function Home() {
 
   const scrollToSlide = (idx: number) => {
     slideRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!isDesktop) setSidebarOpen(false);
   };
 
-  const currentSlide = SLIDES[currentIndex];
-
   return (
-    <div style={{ display: "flex", height: "100vh", background: "#0d0d0d" }}>
-      <aside style={sidebarStyle}>
-        <div style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>목차</div>
+    <div style={{ background: "#0d0d0d" }}>
+      <button
+        type="button"
+        className="sidebar-toggle"
+        onClick={() => setSidebarOpen((v) => !v)}
+        aria-label={sidebarOpen ? "목차 닫기" : "목차 열기"}
+        aria-expanded={sidebarOpen}
+      >
+        {sidebarOpen ? "✕" : "☰"}
+      </button>
+
+      <div
+        className={`sidebar-backdrop ${sidebarOpen && !isDesktop ? "is-visible" : ""}`}
+        onClick={() => setSidebarOpen(false)}
+      />
+
+      <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
+        <div style={{ fontSize: 13, color: "#888", marginBottom: 16, marginTop: 40 }}>목차</div>
         <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
           {SLIDES.map((slide, idx) => (
             <li key={slide.id}>
@@ -81,25 +110,17 @@ export default function Home() {
           ))}
         </ol>
 
-        <a
-          href={`/api/slide-image?nodeId=${encodeURIComponent(currentSlide.id)}&format=pdf`}
-          download
-          style={downloadButtonStyle}
-        >
-          현재 슬라이드 PDF 다운로드
+        <a href="/api/slides-pdf" download style={downloadButtonStyle}>
+          전체 슬라이드 PDF 다운로드
         </a>
       </aside>
 
-      <div ref={containerRef} style={{ flex: 1, overflow: "auto", position: "relative" }}>
+      <div ref={containerRef} className={`main-area ${sidebarOpen && isDesktop ? "sidebar-open" : ""}`}>
         <div
+          className="slide-list"
           style={{
             transform: `scale(${zoom / 100})`,
             transformOrigin: "top center",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 32,
-            padding: "32px 24px 96px",
           }}
         >
           {SLIDES.map((slide, idx) => (
@@ -140,7 +161,7 @@ export default function Home() {
           ))}
         </div>
 
-        <div style={zoomBarStyle}>
+        <div className="zoom-bar" style={zoomBarStyle}>
           <button
             type="button"
             onClick={() => setZoom((z) => Math.max(ZOOM_MIN, z - ZOOM_STEP))}
@@ -173,18 +194,6 @@ export default function Home() {
   );
 }
 
-const sidebarStyle: CSSProperties = {
-  width: 260,
-  flexShrink: 0,
-  background: "#141414",
-  color: "#fff",
-  padding: 24,
-  display: "flex",
-  flexDirection: "column",
-  borderRight: "1px solid rgba(255,255,255,0.08)",
-  overflowY: "auto",
-};
-
 const tocButtonStyle: CSSProperties = {
   width: "100%",
   textAlign: "left",
@@ -209,9 +218,6 @@ const downloadButtonStyle: CSSProperties = {
 };
 
 const zoomBarStyle: CSSProperties = {
-  position: "fixed",
-  bottom: 24,
-  right: 24,
   display: "flex",
   alignItems: "center",
   gap: 2,
@@ -219,7 +225,6 @@ const zoomBarStyle: CSSProperties = {
   borderRadius: 999,
   padding: 4,
   boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
-  zIndex: 10,
 };
 
 const zoomButtonStyle: CSSProperties = {
