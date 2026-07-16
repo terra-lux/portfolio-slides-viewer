@@ -68,6 +68,11 @@ export default function Home() {
   }, []);
 
   const scrollToSlide = (idx: number) => {
+    // Set the highlight immediately instead of waiting for the smooth-scroll
+    // to finish and the IntersectionObserver to catch up — otherwise
+    // reopening the (mobile, auto-closing) sidebar right after a click shows
+    // the previous slide as "current" for a moment.
+    setCurrentIndex(idx);
     slideRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (!isDesktop) setSidebarOpen(false);
   };
@@ -129,34 +134,38 @@ export default function Home() {
               ref={(el) => {
                 slideRefs.current[idx] = el;
               }}
-              style={{
-                width: "min(1600px, 90vw)",
-                aspectRatio: "16 / 9",
-                background: "#1a1a1a",
-                boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#666",
-                fontSize: 13,
-              }}
+              className="slide-page"
             >
-              {failedSlides[slide.id] ? (
-                "이미지를 불러오지 못했습니다 (FIGMA_API_TOKEN 설정을 확인해 주세요)"
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  ref={(el) => {
-                    imgRefs.current[idx] = el;
-                  }}
-                  src={`/api/slide-image?nodeId=${encodeURIComponent(slide.id)}&format=png`}
-                  alt={slide.title}
-                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                  loading={idx < 2 ? "eager" : "lazy"}
-                  onError={() => markFailed(slide.id)}
-                />
-              )}
+              <div
+                style={{
+                  width: "min(1600px, 90vw)",
+                  aspectRatio: "16 / 9",
+                  background: "#1a1a1a",
+                  boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#666",
+                  fontSize: 13,
+                }}
+              >
+                {failedSlides[slide.id] ? (
+                  "이미지를 불러오지 못했습니다 (FIGMA_API_TOKEN 설정을 확인해 주세요)"
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    ref={(el) => {
+                      imgRefs.current[idx] = el;
+                    }}
+                    src={`/api/slide-image?nodeId=${encodeURIComponent(slide.id)}&format=png`}
+                    alt={slide.title}
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                    loading={idx < 2 ? "eager" : "lazy"}
+                    onError={() => markFailed(slide.id)}
+                  />
+                )}
+              </div>
             </div>
           ))}
         </div>
