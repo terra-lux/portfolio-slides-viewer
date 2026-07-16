@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { SLIDES } from "@/lib/figma-slides";
+import { GROUPS, SLIDES } from "@/lib/figma-slides";
 
 const ZOOM_MIN = 50;
 const ZOOM_MAX = 200;
 const ZOOM_STEP = 10;
 const DESKTOP_QUERY = "(min-width: 768px)";
+
+// Flat slide index -> group index, and each group's first flat slide index.
+const GROUP_OF_SLIDE = SLIDES.map((slide) => slide.groupIndex);
+const GROUP_START_INDEX = GROUPS.map((_, groupIndex) => GROUP_OF_SLIDE.indexOf(groupIndex));
 
 export default function Home() {
   const [zoom, setZoom] = useState(100);
@@ -17,6 +21,11 @@ export default function Home() {
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const imgRefs = useRef<(HTMLImageElement | null)[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // While a TOC click is smooth-scrolling toward a far-away slide, the
+  // observer still fires for whatever is honestly visible mid-flight and
+  // would otherwise stomp the just-clicked highlight before arrival.
+  const isProgrammaticScrollRef = useRef(false);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const markFailed = (slideId: string) => {
     setFailedSlides((prev) => (prev[slideId] ? prev : { ...prev, [slideId]: true }));
@@ -51,6 +60,8 @@ export default function Home() {
 
     const observer = new IntersectionObserver(
       (entries) => {
+        if (isProgrammaticScrollRef.current) return;
+
         const mostVisible = entries
           .filter((entry) => entry.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
@@ -64,18 +75,43 @@ export default function Home() {
     );
 
     slideRefs.current.forEach((el) => el && observer.observe(el));
-    return () => observer.disconnect();
+
+    // Scrolling toward a distant slide keeps firing scroll events while it
+    // travels; treat 150ms of quiet as "arrived" and resume trusting the
+    // observer again.
+    const armSettleTimer = () => {
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 150);
+    };
+    root.addEventListener("scroll", armSettleTimer, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      root.removeEventListener("scroll", armSettleTimer);
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    };
   }, []);
 
-  const scrollToSlide = (idx: number) => {
+  const scrollToGroup = (groupIndex: number) => {
+    const idx = GROUP_START_INDEX[groupIndex];
     // Set the highlight immediately instead of waiting for the smooth-scroll
     // to finish and the IntersectionObserver to catch up — otherwise
     // reopening the (mobile, auto-closing) sidebar right after a click shows
-    // the previous slide as "current" for a moment.
+    // the previous slide as "current" for a moment. Suppress the observer
+    // until the scroll settles so it doesn't overwrite this mid-flight.
+    isProgrammaticScrollRef.current = true;
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 150);
     setCurrentIndex(idx);
     slideRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (!isDesktop) setSidebarOpen(false);
   };
+
+  const currentGroupIndex = GROUP_OF_SLIDE[currentIndex] ?? 0;
 
   return (
     <div style={{ background: "#0d0d0d" }}>
@@ -97,26 +133,26 @@ export default function Home() {
       <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
         <div style={{ fontSize: 13, color: "#888", marginBottom: 16, marginTop: 40 }}>목차</div>
         <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-          {SLIDES.map((slide, idx) => (
-            <li key={slide.id}>
+          {GROUPS.map((group, groupIdx) => (
+            <li key={group.title}>
               <button
                 type="button"
-                onClick={() => scrollToSlide(idx)}
+                onClick={() => scrollToGroup(groupIdx)}
                 style={{
                   ...tocButtonStyle,
-                  background: idx === currentIndex ? "rgba(255,255,255,0.12)" : "transparent",
-                  color: idx === currentIndex ? "#fff" : "#999",
+                  background: groupIdx === currentGroupIndex ? "rgba(255,255,255,0.12)" : "transparent",
+                  color: groupIdx === currentGroupIndex ? "#fff" : "#999",
                 }}
               >
-                <span style={{ opacity: 0.5, marginRight: 8 }}>{String(idx + 1).padStart(2, "0")}</span>
-                {slide.title}
+                <span style={{ opacity: 0.5, marginRight: 8 }}>{String(groupIdx + 1).padStart(2, "0")}</span>
+                {group.title}
               </button>
             </li>
           ))}
         </ol>
 
         <a href="/api/slides-pdf" download style={downloadButtonStyle}>
-          전체 슬라이드 PDF 다운로드
+          PDF 다운로드
         </a>
       </aside>
 
@@ -136,42 +172,35 @@ export default function Home() {
               }}
               className="slide-page"
             >
-              {/* Frames vary wildly in aspect ratio (panoramic case-study
-                  spreads up to 34320x1080 alongside normal 16:9 slides), so
-                  each is sized to a fixed height and scrolls horizontally
-                  instead of being forced into a shared box shape. */}
-              <div className="slide-frame-wrapper">
-                <div
-                  style={{
-                    height: "min(80vh, 900px)",
-                    aspectRatio: `${slide.width} / ${slide.height}`,
-                    flexShrink: 0,
-                    background: "#1a1a1a",
-                    boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
-                    overflow: "hidden",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#666",
-                    fontSize: 13,
-                  }}
-                >
-                  {failedSlides[slide.id] ? (
-                    "이미지를 불러오지 못했습니다 (FIGMA_API_TOKEN 설정을 확인해 주세요)"
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      ref={(el) => {
-                        imgRefs.current[idx] = el;
-                      }}
-                      src={`/api/slide-image?nodeId=${encodeURIComponent(slide.id)}&format=png`}
-                      alt={slide.title}
-                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                      loading={idx < 2 ? "eager" : "lazy"}
-                      onError={() => markFailed(slide.id)}
-                    />
-                  )}
-                </div>
+              <div
+                style={{
+                  width: "min(1600px, 90vw)",
+                  aspectRatio: "16 / 9",
+                  background: "#1a1a1a",
+                  boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#666",
+                  fontSize: 13,
+                }}
+              >
+                {failedSlides[slide.id] ? (
+                  "이미지를 불러오지 못했습니다 (FIGMA_API_TOKEN 설정을 확인해 주세요)"
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    ref={(el) => {
+                      imgRefs.current[idx] = el;
+                    }}
+                    src={`/api/slide-image?nodeId=${encodeURIComponent(slide.id)}&format=png`}
+                    alt={GROUPS[slide.groupIndex].title}
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                    loading={idx < 2 ? "eager" : "lazy"}
+                    onError={() => markFailed(slide.id)}
+                  />
+                )}
               </div>
             </div>
           ))}
