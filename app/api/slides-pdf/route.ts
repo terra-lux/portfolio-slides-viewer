@@ -1,22 +1,31 @@
-import { fetchFigmaPdfUrl } from "@/lib/figma-api";
+import { PDFDocument } from "pdf-lib";
+import { fetchFigmaPdfUrls } from "@/lib/figma-api";
 import { FIGMA_FILE_KEY, SLIDES } from "@/lib/figma-slides";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const pdfUrl = await fetchFigmaPdfUrl(
-      FIGMA_FILE_KEY,
-      SLIDES.map((slide) => slide.id)
-    );
+    const nodeIds = SLIDES.map((slide) => slide.id);
+    const pdfUrls = await fetchFigmaPdfUrls(FIGMA_FILE_KEY, nodeIds);
 
-    const fileRes = await fetch(pdfUrl);
-    if (!fileRes.ok) {
-      return new Response("Figma에서 PDF를 가져오지 못했습니다.", { status: 502 });
+    const merged = await PDFDocument.create();
+
+    for (const nodeId of nodeIds) {
+      const fileRes = await fetch(pdfUrls[nodeId]);
+      if (!fileRes.ok) {
+        return new Response(`"${nodeId}" 슬라이드의 PDF를 가져오지 못했습니다.`, { status: 502 });
+      }
+
+      const sourceBytes = await fileRes.arrayBuffer();
+      const source = await PDFDocument.load(sourceBytes);
+      const copiedPages = await merged.copyPages(source, source.getPageIndices());
+      copiedPages.forEach((page) => merged.addPage(page));
     }
 
-    const buffer = await fileRes.arrayBuffer();
-    return new Response(buffer, {
+    const mergedBytes = await merged.save();
+
+    return new Response(mergedBytes, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="portfolio.pdf"',

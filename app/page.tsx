@@ -136,35 +136,42 @@ export default function Home() {
               }}
               className="slide-page"
             >
-              <div
-                style={{
-                  width: "min(1600px, 90vw)",
-                  aspectRatio: "16 / 9",
-                  background: "#1a1a1a",
-                  boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
-                  overflow: "hidden",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#666",
-                  fontSize: 13,
-                }}
-              >
-                {failedSlides[slide.id] ? (
-                  "이미지를 불러오지 못했습니다 (FIGMA_API_TOKEN 설정을 확인해 주세요)"
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    ref={(el) => {
-                      imgRefs.current[idx] = el;
-                    }}
-                    src={`/api/slide-image?nodeId=${encodeURIComponent(slide.id)}&format=png`}
-                    alt={slide.title}
-                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                    loading={idx < 2 ? "eager" : "lazy"}
-                    onError={() => markFailed(slide.id)}
-                  />
-                )}
+              {/* Frames vary wildly in aspect ratio (panoramic case-study
+                  spreads up to 34320x1080 alongside normal 16:9 slides), so
+                  each is sized to a fixed height and scrolls horizontally
+                  instead of being forced into a shared box shape. */}
+              <div className="slide-frame-wrapper">
+                <div
+                  style={{
+                    height: "min(80vh, 900px)",
+                    aspectRatio: `${slide.width} / ${slide.height}`,
+                    flexShrink: 0,
+                    background: "#1a1a1a",
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
+                    overflow: "hidden",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#666",
+                    fontSize: 13,
+                  }}
+                >
+                  {failedSlides[slide.id] ? (
+                    "이미지를 불러오지 못했습니다 (FIGMA_API_TOKEN 설정을 확인해 주세요)"
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      ref={(el) => {
+                        imgRefs.current[idx] = el;
+                      }}
+                      src={`/api/slide-image?nodeId=${encodeURIComponent(slide.id)}&format=png`}
+                      alt={slide.title}
+                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                      loading={idx < 2 ? "eager" : "lazy"}
+                      onError={() => markFailed(slide.id)}
+                    />
+                  )}
+                </div>
               </div>
             </div>
           ))}

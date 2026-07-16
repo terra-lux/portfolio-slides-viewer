@@ -34,9 +34,11 @@ export async function fetchFigmaPngUrl(fileKey: string, nodeId: string, scale: n
   return url;
 }
 
-// Figma renders every requested node id into a single multi-page PDF (one
-// page per id, in the order given) and maps each id to that same file URL.
-export async function fetchFigmaPdfUrl(fileKey: string, nodeIds: string[]): Promise<string> {
+// Despite requesting them together, Figma's images endpoint gives every
+// node id its own single-page PDF file (it does not merge them into one
+// multi-page document) — so this returns a url per id, and the caller is
+// responsible for merging the individual PDFs into one file.
+export async function fetchFigmaPdfUrls(fileKey: string, nodeIds: string[]): Promise<Record<string, string>> {
   const token = requireToken();
   const params = new URLSearchParams({ ids: nodeIds.join(","), format: "pdf" });
 
@@ -54,10 +56,14 @@ export async function fetchFigmaPdfUrl(fileKey: string, nodeIds: string[]): Prom
     throw new Error(data.err);
   }
 
-  const url = Object.values(data.images).find((value): value is string => Boolean(value));
-  if (!url) {
-    throw new Error("Figma가 PDF를 생성하지 못했습니다.");
+  const urls: Record<string, string> = {};
+  for (const nodeId of nodeIds) {
+    const url = data.images[nodeId];
+    if (!url) {
+      throw new Error(`"${nodeId}" 슬라이드의 PDF를 생성하지 못했습니다.`);
+    }
+    urls[nodeId] = url;
   }
 
-  return url;
+  return urls;
 }

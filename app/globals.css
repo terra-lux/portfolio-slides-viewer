@@ -98,6 +98,13 @@ a {
   padding-top: 88px;
 }
 
+.slide-frame-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  display: flex;
+  justify-content: center;
+}
+
 .zoom-bar {
   position: fixed;
   bottom: 24px;
@@ -116,9 +123,12 @@ a {
 }
 
 @media (max-width: 640px) {
-  .slide-list {
-    padding: 72px 16px 96px;
-    gap: 20px;
+  .slide-page {
+    padding: 16px;
+  }
+
+  .slide-page:first-child {
+    padding-top: 72px;
   }
 
   .zoom-bar {
