@@ -2,7 +2,7 @@ import { PDFDocument } from "pdf-lib";
 import { fetchFigmaPdfUrls } from "@/lib/figma-api";
 import { FIGMA_FILE_KEY, SLIDES } from "@/lib/figma-slides";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 export const maxDuration = 60;
 
 export async function GET() {
@@ -17,7 +17,7 @@ export async function GET() {
       nodeIds.map(async (nodeId) => {
         const fileRes = await fetch(pdfUrls[nodeId]);
         if (!fileRes.ok) {
-          throw new Error(`"${nodeId}" 슬라이드의 PDF를 가져오지 못했습니다.`);
+          throw new Error(`"${nodeId}" 슬라이드의 PDF를 가져오지 못했습니다. (${fileRes.status})`);
         }
         return fileRes.arrayBuffer();
       })
@@ -30,13 +30,20 @@ export async function GET() {
       copiedPages.forEach((page) => merged.addPage(page));
     }
 
+    // Fail loudly instead of silently shipping a short file if merging
+    // somehow dropped pages.
+    if (merged.getPageCount() !== SLIDES.length) {
+      throw new Error(
+        `병합된 PDF 페이지 수(${merged.getPageCount()})가 슬라이드 수(${SLIDES.length})와 다릅니다.`
+      );
+    }
+
     const mergedBytes = await merged.save();
 
     return new Response(mergedBytes, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="portfolio.pdf"',
-        "Cache-Control": "no-store",
       },
     });
   } catch (err) {
