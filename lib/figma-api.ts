@@ -180,19 +180,15 @@ export async function fetchSlideGroups(
   return groups;
 }
 
-// Despite requesting them together, Figma's images endpoint gives every
-// node id its own single-page PDF file (it does not merge them into one
-// multi-page document) — so this returns a url per id, and the caller is
-// responsible for merging the individual PDFs into one file.
-export async function fetchFigmaPdfUrls(fileKey: string, nodeIds: string[]): Promise<Record<string, string>> {
-  const images = await fetchImageUrls(fileKey, nodeIds, "pdf");
-  const urls: Record<string, string> = {};
-  for (const nodeId of nodeIds) {
-    const url = images[nodeId];
-    if (!url) {
-      throw new Error(`"${nodeId}" 슬라이드의 PDF를 생성하지 못했습니다.`);
-    }
-    urls[nodeId] = url;
+// Render ONE slide to a single-page PDF and return its url. Kept to a
+// single id on purpose: a 20-id batch makes Figma render 20 PDFs inside
+// one request, which can outlast the serverless time budget — one render
+// is a couple of seconds and each slide caches independently.
+export async function fetchFigmaPdfUrl(fileKey: string, nodeId: string): Promise<string> {
+  const images = await fetchImagesBatch(fileKey, [nodeId], "pdf");
+  const url = images[nodeId];
+  if (!url) {
+    throw new Error("Figma가 PDF를 생성하지 못했습니다.");
   }
-  return urls;
+  return url;
 }

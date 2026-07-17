@@ -260,11 +260,26 @@ export default function PortfolioViewer({ groups, imageUrls, loadError }: Portfo
 function PdfDownloadButton({ slideIds }: { slideIds: string[] }) {
   const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
   const [progress, setProgress] = useState(0);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
+
+  const fetchSlidePdf = async (slideId: string, position: string): Promise<ArrayBuffer> => {
+    // Each slide is a live Figma render; give transient hiccups (rate
+    // limits, render timeouts) a couple of retries before failing the run.
+    let lastMessage = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
+      const res = await fetch(`/api/slide-pdf?nodeId=${encodeURIComponent(slideId)}`);
+      if (res.ok) return res.arrayBuffer();
+      lastMessage = (await res.text().catch(() => "")).slice(0, 200);
+    }
+    throw new Error(`슬라이드 ${position} 실패: ${lastMessage || "응답 없음"}`);
+  };
 
   const handleClick = async () => {
     if (status === "working") return;
     setStatus("working");
     setProgress(0);
+    setErrorDetail(null);
 
     try {
       const { PDFDocument } = await import("pdf-lib");
@@ -276,16 +291,12 @@ function PdfDownloadButton({ slideIds }: { slideIds: string[] }) {
       const worker = async () => {
         while (nextIndex < slideIds.length) {
           const i = nextIndex++;
-          const res = await fetch(`/api/slide-pdf?nodeId=${encodeURIComponent(slideIds[i])}`);
-          if (!res.ok) {
-            throw new Error(`슬라이드 ${i + 1}/${slideIds.length} PDF 실패 (${res.status})`);
-          }
-          buffers[i] = await res.arrayBuffer();
+          buffers[i] = await fetchSlidePdf(slideIds[i], `${i + 1}/${slideIds.length}`);
           completed += 1;
           setProgress(completed);
         }
       };
-      await Promise.all(Array.from({ length: Math.min(6, slideIds.length) }, worker));
+      await Promise.all(Array.from({ length: Math.min(3, slideIds.length) }, worker));
 
       const merged = await PDFDocument.create();
       for (const bytes of buffers) {
@@ -310,6 +321,7 @@ function PdfDownloadButton({ slideIds }: { slideIds: string[] }) {
       setStatus("idle");
     } catch (err) {
       console.error(err);
+      setErrorDetail(err instanceof Error ? err.message : String(err));
       setStatus("error");
     }
   };
@@ -322,20 +334,27 @@ function PdfDownloadButton({ slideIds }: { slideIds: string[] }) {
         : "PDF 다운로드";
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={status === "working"}
-      style={{
-        ...downloadButtonStyle,
-        border: "none",
-        cursor: status === "working" ? "wait" : "pointer",
-        opacity: status === "working" ? 0.7 : 1,
-        width: "100%",
-      }}
-    >
-      {label}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={status === "working"}
+        style={{
+          ...downloadButtonStyle,
+          border: "none",
+          cursor: status === "working" ? "wait" : "pointer",
+          opacity: status === "working" ? 0.7 : 1,
+          width: "100%",
+        }}
+      >
+        {label}
+      </button>
+      {errorDetail && (
+        <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, color: "#c77", wordBreak: "break-all" }}>
+          {errorDetail}
+        </div>
+      )}
+    </>
   );
 }
 

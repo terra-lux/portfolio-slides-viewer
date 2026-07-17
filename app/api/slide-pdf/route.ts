@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { fetchFigmaPdfUrls, fetchSlideGroups } from "@/lib/figma-api";
+import { fetchFigmaPdfUrl, fetchSlideGroups } from "@/lib/figma-api";
 import { FIGMA_FILE_KEY, SLIDE_ALL_NODE_ID, SLIDE_ALL_NODE_NAME } from "@/lib/figma-slides";
 
 // Serves ONE slide's single-page PDF. The full deck is merged client-side:
@@ -31,16 +31,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Both lookups are fetch-cached (60s revalidate), so the 50+ per-slide
-    // requests a single download triggers share a handful of Figma calls.
+    // Enumeration is fetch-cached (60s revalidate), so the 50+ per-slide
+    // requests a single download triggers share one Figma files call; the
+    // render call is per-slide by design to keep each request short.
     const groups = await fetchSlideGroups(FIGMA_FILE_KEY, SLIDE_ALL_NODE_ID, SLIDE_ALL_NODE_NAME);
     const nodeIds = groups.flatMap((group) => group.slideIds);
     if (!nodeIds.includes(nodeId)) {
       return new Response("Unknown slide", { status: 404 });
     }
 
-    const pdfUrls = await fetchFigmaPdfUrls(FIGMA_FILE_KEY, nodeIds);
-    const fileRes = await fetch(pdfUrls[nodeId], { cache: "no-store" });
+    const pdfUrl = await fetchFigmaPdfUrl(FIGMA_FILE_KEY, nodeId);
+    const fileRes = await fetch(pdfUrl, { cache: "no-store" });
     if (!fileRes.ok || !fileRes.body) {
       return new Response(`슬라이드 PDF를 가져오지 못했습니다. (${fileRes.status})`, { status: 502 });
     }
