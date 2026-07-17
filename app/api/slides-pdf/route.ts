@@ -1,13 +1,14 @@
 import { PDFDocument } from "pdf-lib";
-import { fetchFigmaPdfUrls } from "@/lib/figma-api";
-import { FIGMA_FILE_KEY, SLIDES } from "@/lib/figma-slides";
+import { fetchFigmaPdfUrls, fetchSlideNodes } from "@/lib/figma-api";
+import { FIGMA_FILE_KEY } from "@/lib/figma-slides";
 
 export const revalidate = 60;
 export const maxDuration = 60;
 
 export async function GET() {
   try {
-    const nodeIds = SLIDES.map((slide) => slide.id);
+    const slides = await fetchSlideNodes(FIGMA_FILE_KEY);
+    const nodeIds = slides.map((slide) => slide.id);
     const pdfUrls = await fetchFigmaPdfUrls(FIGMA_FILE_KEY, nodeIds);
 
     // Download every slide's single-page PDF in parallel (there can be
@@ -32,9 +33,9 @@ export async function GET() {
 
     // Fail loudly instead of silently shipping a short file if merging
     // somehow dropped pages.
-    if (merged.getPageCount() !== SLIDES.length) {
+    if (merged.getPageCount() !== nodeIds.length) {
       throw new Error(
-        `병합된 PDF 페이지 수(${merged.getPageCount()})가 슬라이드 수(${SLIDES.length})와 다릅니다.`
+        `병합된 PDF 페이지 수(${merged.getPageCount()})가 슬라이드 수(${nodeIds.length})와 다릅니다.`
       );
     }
 

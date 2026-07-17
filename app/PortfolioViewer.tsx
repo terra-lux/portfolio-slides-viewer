@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { GROUPS, SLIDES } from "@/lib/figma-slides";
+import type { SlideNode } from "@/lib/figma-api";
 
 const ZOOM_MIN = 50;
 const ZOOM_MAX = 200;
 const ZOOM_STEP = 10;
 const DESKTOP_QUERY = "(min-width: 768px)";
 
-// Flat slide index -> group index, and each group's first flat slide index.
-const GROUP_OF_SLIDE = SLIDES.map((slide) => slide.groupIndex);
-const GROUP_START_INDEX = GROUPS.map((_, groupIndex) => GROUP_OF_SLIDE.indexOf(groupIndex));
+interface PortfolioViewerProps {
+  slides: SlideNode[];
+  imageUrls: Record<string, string>;
+  loadError: string | null;
+}
 
-export default function PortfolioViewer({ imageUrls }: { imageUrls: Record<string, string> }) {
+export default function PortfolioViewer({ slides, imageUrls, loadError }: PortfolioViewerProps) {
   const [zoom, setZoom] = useState(100);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -77,8 +79,7 @@ export default function PortfolioViewer({ imageUrls }: { imageUrls: Record<strin
     };
   }, []);
 
-  const scrollToGroup = (groupIndex: number) => {
-    const idx = GROUP_START_INDEX[groupIndex];
+  const scrollToSlide = (idx: number) => {
     // Set the highlight immediately instead of waiting for the smooth-scroll
     // to finish and the IntersectionObserver to catch up — otherwise
     // reopening the (mobile, auto-closing) sidebar right after a click shows
@@ -94,7 +95,25 @@ export default function PortfolioViewer({ imageUrls }: { imageUrls: Record<strin
     if (!isDesktop) setSidebarOpen(false);
   };
 
-  const currentGroupIndex = GROUP_OF_SLIDE[currentIndex] ?? 0;
+  if (loadError || slides.length === 0) {
+    return (
+      <div
+        style={{
+          height: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#0d0d0d",
+          color: "#888",
+          fontSize: 14,
+          padding: 24,
+          textAlign: "center",
+        }}
+      >
+        슬라이드를 불러오지 못했습니다: {loadError ?? "슬라이드가 없습니다."}
+      </div>
+    );
+  }
 
   return (
     <div style={{ background: "#0d0d0d" }}>
@@ -116,19 +135,19 @@ export default function PortfolioViewer({ imageUrls }: { imageUrls: Record<strin
       <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
         <div style={{ fontSize: 13, color: "#888", marginBottom: 16, marginTop: 40 }}>목차</div>
         <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-          {GROUPS.map((group, groupIdx) => (
-            <li key={group.title}>
+          {slides.map((slide, idx) => (
+            <li key={slide.id}>
               <button
                 type="button"
-                onClick={() => scrollToGroup(groupIdx)}
+                onClick={() => scrollToSlide(idx)}
                 style={{
                   ...tocButtonStyle,
-                  background: groupIdx === currentGroupIndex ? "rgba(255,255,255,0.12)" : "transparent",
-                  color: groupIdx === currentGroupIndex ? "#fff" : "#999",
+                  background: idx === currentIndex ? "rgba(255,255,255,0.12)" : "transparent",
+                  color: idx === currentIndex ? "#fff" : "#999",
                 }}
               >
-                <span style={{ opacity: 0.5, marginRight: 8 }}>{String(groupIdx + 1).padStart(2, "0")}</span>
-                {group.title}
+                <span style={{ opacity: 0.5, marginRight: 8 }}>{String(idx + 1).padStart(2, "0")}</span>
+                {slide.name}
               </button>
             </li>
           ))}
@@ -147,7 +166,7 @@ export default function PortfolioViewer({ imageUrls }: { imageUrls: Record<strin
             transformOrigin: "top center",
           }}
         >
-          {SLIDES.map((slide, idx) => (
+          {slides.map((slide, idx) => (
             <div
               key={slide.id}
               ref={(el) => {
@@ -173,12 +192,12 @@ export default function PortfolioViewer({ imageUrls }: { imageUrls: Record<strin
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={imageUrls[slide.id]}
-                    alt={GROUPS[slide.groupIndex].title}
+                    alt={slide.name}
                     style={{ width: "100%", height: "100%", objectFit: "contain" }}
                     loading={idx < 2 ? "eager" : "lazy"}
                   />
                 ) : (
-                  "이미지를 불러오지 못했습니다 (FIGMA_API_TOKEN 설정을 확인해 주세요)"
+                  "이미지를 불러오지 못했습니다"
                 )}
               </div>
             </div>

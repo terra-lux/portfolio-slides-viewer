@@ -107,6 +107,57 @@ export async function fetchFigmaPngUrls(
   return urls;
 }
 
+interface FigmaFileNode {
+  id: string;
+  name: string;
+  type: string;
+  children?: FigmaFileNode[];
+}
+
+export interface SlideNode {
+  id: string;
+  name: string;
+}
+
+// Enumerate the slides of a Figma Slides (presentation) file in deck order.
+// The file endpoint returns the document tree; SLIDE nodes sit under the
+// canvas (nested in SLIDE_GRID/SLIDE_ROW containers), and depth-first order
+// matches the deck's reading order. depth=4 is deep enough to reach SLIDE
+// nodes without pulling every slide's full contents into the payload.
+export async function fetchSlideNodes(fileKey: string): Promise<SlideNode[]> {
+  const token = requireToken();
+
+  const res = await fetch(`${FIGMA_API_BASE}/files/${fileKey}?depth=4`, {
+    headers: { "X-Figma-Token": token },
+    next: { revalidate: REVALIDATE_SECONDS },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Figma 파일 정보를 불러오지 못했습니다 (${res.status})`);
+  }
+
+  const data: { document?: FigmaFileNode } = await res.json();
+  if (!data.document) {
+    throw new Error("Figma 파일 응답에 document가 없습니다.");
+  }
+
+  const slides: SlideNode[] = [];
+  const walk = (node: FigmaFileNode) => {
+    if (node.type === "SLIDE") {
+      slides.push({ id: node.id, name: node.name });
+      return;
+    }
+    node.children?.forEach(walk);
+  };
+  walk(data.document);
+
+  if (slides.length === 0) {
+    throw new Error("파일에서 슬라이드를 찾지 못했습니다.");
+  }
+
+  return slides;
+}
+
 // Despite requesting them together, Figma's images endpoint gives every
 // node id its own single-page PDF file (it does not merge them into one
 // multi-page document) — so this returns a url per id, and the caller is

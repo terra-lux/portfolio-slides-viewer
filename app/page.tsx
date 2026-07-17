@@ -1,25 +1,30 @@
 import PortfolioViewer from "./PortfolioViewer";
-import { fetchFigmaPngUrls } from "@/lib/figma-api";
-import { FIGMA_FILE_KEY, SLIDES } from "@/lib/figma-slides";
+import { fetchFigmaPngUrls, fetchSlideNodes, type SlideNode } from "@/lib/figma-api";
+import { FIGMA_FILE_KEY } from "@/lib/figma-slides";
+
+export const revalidate = 60;
 
 const PNG_SCALE = 1.5;
 
 export default async function Home() {
-  // Fetch every slide's image url in a couple of batched Figma calls
-  // instead of one call per <img> tag — 53 near-simultaneous individual
-  // requests was enough to trip Figma's rate limiting and drop some
-  // slides. A url missing from the result (single bad frame, or the whole
-  // call failing e.g. no token) just shows that slide's fallback text.
+  // Enumerate the deck straight from the Slides file so order (and any
+  // added/removed slides) always matches Figma, then resolve every slide's
+  // image url in a few batched calls — one request per <img> was enough to
+  // trip Figma's rate limiting and drop slides.
+  let slides: SlideNode[] = [];
   let imageUrls: Record<string, string> = {};
+  let loadError: string | null = null;
+
   try {
+    slides = await fetchSlideNodes(FIGMA_FILE_KEY);
     imageUrls = await fetchFigmaPngUrls(
       FIGMA_FILE_KEY,
-      SLIDES.map((slide) => slide.id),
+      slides.map((slide) => slide.id),
       PNG_SCALE
     );
-  } catch {
-    // leave imageUrls empty; PortfolioViewer falls back per-slide
+  } catch (err) {
+    loadError = err instanceof Error ? err.message : "알 수 없는 오류";
   }
 
-  return <PortfolioViewer imageUrls={imageUrls} />;
+  return <PortfolioViewer slides={slides} imageUrls={imageUrls} loadError={loadError} />;
 }
