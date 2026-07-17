@@ -11,6 +11,8 @@ const REVALIDATE_SECONDS = 60;
 // few smaller, more predictable ones.
 const IDS_PER_REQUEST = 20;
 
+const MAX_RETRIES = 3;
+
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -27,6 +29,10 @@ function requireToken(): string {
   return token;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchImagesBatch(
   fileKey: string,
   nodeIds: string[],
@@ -39,30 +45,66 @@ async function fetchImagesBatch(
     params.set("scale", String(scale));
   }
 
-  const res = await fetch(`${FIGMA_API_BASE}/images/${fileKey}?${params}`, {
-    headers: { "X-Figma-Token": token },
-    next: { revalidate: REVALIDATE_SECONDS },
-  });
+  let lastError: Error | null = null;
 
-  if (!res.ok) {
-    throw new Error(`Figma API 오류 (${res.status})`);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(`${FIGMA_API_BASE}/images/${fileKey}?${params}`, {
+      headers: { "X-Figma-Token": token },
+      next: { revalidate: REVALIDATE_SECONDS },
+    });
+
+    // 429 (rate limited) and 5xx are worth retrying with backoff; anything
+    // else (bad token, bad ids) will just fail the same way again.
+    if (res.status === 429 || res.status >= 500) {
+      lastError = new Error(`Figma API 오류 (${res.status})`);
+      if (attempt < MAX_RETRIES) {
+        await sleep(300 * 2 ** attempt);
+        continue;
+      }
+      throw lastError;
+    }
+
+    if (!res.ok) {
+      throw new Error(`Figma API 오류 (${res.status})`);
+    }
+
+    const data: { images: Record<string, string | null>; err?: string | null } = await res.json();
+    if (data.err) {
+      throw new Error(data.err);
+    }
+
+    return data.images;
   }
 
-  const data: { images: Record<string, string | null>; err?: string | null } = await res.json();
-  if (data.err) {
-    throw new Error(data.err);
-  }
-
-  return data.images;
+  throw lastError ?? new Error("Figma API 요청에 실패했습니다.");
 }
 
-export async function fetchFigmaPngUrl(fileKey: string, nodeId: string, scale: number): Promise<string> {
-  const images = await fetchImagesBatch(fileKey, [nodeId], "png", scale);
-  const url = images[nodeId];
-  if (!url) {
-    throw new Error("Figma가 이미지를 생성하지 못했습니다.");
+async function fetchImageUrls(
+  fileKey: string,
+  nodeIds: string[],
+  format: "png" | "pdf",
+  scale?: number
+): Promise<Record<string, string | null>> {
+  const batches = await Promise.all(
+    chunk(nodeIds, IDS_PER_REQUEST).map((batch) => fetchImagesBatch(fileKey, batch, format, scale))
+  );
+  return Object.assign({}, ...batches);
+}
+
+// One url per slide, keyed by node id. Missing/failed ids are simply absent
+// from the result (rather than failing the whole call) so a single bad
+// frame doesn't take down every other slide on the page.
+export async function fetchFigmaPngUrls(
+  fileKey: string,
+  nodeIds: string[],
+  scale: number
+): Promise<Record<string, string>> {
+  const images = await fetchImageUrls(fileKey, nodeIds, "png", scale);
+  const urls: Record<string, string> = {};
+  for (const [id, url] of Object.entries(images)) {
+    if (url) urls[id] = url;
   }
-  return url;
+  return urls;
 }
 
 // Despite requesting them together, Figma's images endpoint gives every
@@ -70,18 +112,14 @@ export async function fetchFigmaPngUrl(fileKey: string, nodeId: string, scale: n
 // multi-page document) — so this returns a url per id, and the caller is
 // responsible for merging the individual PDFs into one file.
 export async function fetchFigmaPdfUrls(fileKey: string, nodeIds: string[]): Promise<Record<string, string>> {
-  const batches = await Promise.all(
-    chunk(nodeIds, IDS_PER_REQUEST).map((batch) => fetchImagesBatch(fileKey, batch, "pdf"))
-  );
-
+  const images = await fetchImageUrls(fileKey, nodeIds, "pdf");
   const urls: Record<string, string> = {};
   for (const nodeId of nodeIds) {
-    const url = batches.reduce<string | null>((found, batch) => found ?? batch[nodeId] ?? null, null);
+    const url = images[nodeId];
     if (!url) {
       throw new Error(`"${nodeId}" 슬라이드의 PDF를 생성하지 못했습니다.`);
     }
     urls[nodeId] = url;
   }
-
   return urls;
 }
