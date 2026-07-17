@@ -127,13 +127,25 @@ export interface SlideNode {
 export async function fetchSlideNodes(fileKey: string): Promise<SlideNode[]> {
   const token = requireToken();
 
-  const res = await fetch(`${FIGMA_API_BASE}/files/${fileKey}?depth=4`, {
+  // depth caps the payload, but if Figma rejects the parameterized request
+  // (e.g. it's stricter about params on slides decks), retry bare before
+  // giving up — and surface Figma's own error body so failures are
+  // diagnosable from the page instead of an opaque status code.
+  let res = await fetch(`${FIGMA_API_BASE}/files/${fileKey}?depth=4`, {
     headers: { "X-Figma-Token": token },
     next: { revalidate: REVALIDATE_SECONDS },
   });
 
+  if (res.status === 400) {
+    res = await fetch(`${FIGMA_API_BASE}/files/${fileKey}`, {
+      headers: { "X-Figma-Token": token },
+      next: { revalidate: REVALIDATE_SECONDS },
+    });
+  }
+
   if (!res.ok) {
-    throw new Error(`Figma 파일 정보를 불러오지 못했습니다 (${res.status})`);
+    const body = (await res.text().catch(() => "")).slice(0, 300);
+    throw new Error(`Figma 파일 정보를 불러오지 못했습니다 (${res.status}${body ? `: ${body}` : ""})`);
   }
 
   const data: { document?: FigmaFileNode } = await res.json();
