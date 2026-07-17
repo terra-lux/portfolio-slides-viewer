@@ -171,9 +171,7 @@ export default function PortfolioViewer({ groups, imageUrls, loadError }: Portfo
           ))}
         </ol>
 
-        <a href="/api/slides-pdf" download style={downloadButtonStyle}>
-          PDF 다운로드
-        </a>
+        <PdfDownloadButton slideIds={slides.map((slide) => slide.id)} />
       </aside>
 
       <div ref={containerRef} className={`main-area ${sidebarOpen && isDesktop ? "sidebar-open" : ""}`}>
@@ -252,6 +250,92 @@ export default function PortfolioViewer({ groups, imageUrls, loadError }: Portfo
         </div>
       </div>
     </div>
+  );
+}
+
+// Downloads every slide's single-page PDF and merges them in the browser.
+// The merged deck is way past Vercel's 4.5MB function-response limit, so a
+// server-side merge can never be delivered — per-slide fetches plus a
+// client-side pdf-lib merge sidestep both that limit and function timeouts.
+function PdfDownloadButton({ slideIds }: { slideIds: string[] }) {
+  const [status, setStatus] = useState<"idle" | "working" | "error">("idle");
+  const [progress, setProgress] = useState(0);
+
+  const handleClick = async () => {
+    if (status === "working") return;
+    setStatus("working");
+    setProgress(0);
+
+    try {
+      const { PDFDocument } = await import("pdf-lib");
+
+      // Fetch with limited concurrency, but keep results in slide order.
+      const buffers: ArrayBuffer[] = new Array(slideIds.length);
+      let nextIndex = 0;
+      let completed = 0;
+      const worker = async () => {
+        while (nextIndex < slideIds.length) {
+          const i = nextIndex++;
+          const res = await fetch(`/api/slide-pdf?nodeId=${encodeURIComponent(slideIds[i])}`);
+          if (!res.ok) {
+            throw new Error(`슬라이드 ${i + 1}/${slideIds.length} PDF 실패 (${res.status})`);
+          }
+          buffers[i] = await res.arrayBuffer();
+          completed += 1;
+          setProgress(completed);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, slideIds.length) }, worker));
+
+      const merged = await PDFDocument.create();
+      for (const bytes of buffers) {
+        const source = await PDFDocument.load(bytes);
+        const pages = await merged.copyPages(source, source.getPageIndices());
+        pages.forEach((page) => merged.addPage(page));
+      }
+      if (merged.getPageCount() !== slideIds.length) {
+        throw new Error(`페이지 수 불일치 (${merged.getPageCount()}/${slideIds.length})`);
+      }
+
+      const mergedBytes = await merged.save();
+      const blob = new Blob([mergedBytes as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "portfolio.pdf";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setStatus("idle");
+    } catch (err) {
+      console.error(err);
+      setStatus("error");
+    }
+  };
+
+  const label =
+    status === "working"
+      ? `PDF 생성 중… ${progress}/${slideIds.length}`
+      : status === "error"
+        ? "실패 — 다시 시도"
+        : "PDF 다운로드";
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={status === "working"}
+      style={{
+        ...downloadButtonStyle,
+        border: "none",
+        cursor: status === "working" ? "wait" : "pointer",
+        opacity: status === "working" ? 0.7 : 1,
+        width: "100%",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
