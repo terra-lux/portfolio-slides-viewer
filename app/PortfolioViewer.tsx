@@ -296,7 +296,7 @@ function PdfDownloadButton({ slideIds }: { slideIds: string[] }) {
           setProgress(completed);
         }
       };
-      await Promise.all(Array.from({ length: Math.min(3, slideIds.length) }, worker));
+      await Promise.all(Array.from({ length: Math.min(8, slideIds.length) }, worker));
 
       const merged = await PDFDocument.create();
       for (const bytes of buffers) {

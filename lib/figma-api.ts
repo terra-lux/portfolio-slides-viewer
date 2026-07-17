@@ -37,7 +37,8 @@ async function fetchImagesBatch(
   fileKey: string,
   nodeIds: string[],
   format: "png" | "pdf",
-  scale?: number
+  scale?: number,
+  revalidateSeconds: number = REVALIDATE_SECONDS
 ): Promise<Record<string, string | null>> {
   const token = requireToken();
   const params = new URLSearchParams({ ids: nodeIds.join(","), format });
@@ -50,7 +51,7 @@ async function fetchImagesBatch(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const res = await fetch(`${FIGMA_API_BASE}/images/${fileKey}?${params}`, {
       headers: { "X-Figma-Token": token },
-      next: { revalidate: REVALIDATE_SECONDS },
+      next: { revalidate: revalidateSeconds },
     });
 
     // 429 (rate limited) and 5xx are worth retrying with backoff; anything
@@ -183,9 +184,14 @@ export async function fetchSlideGroups(
 // Render ONE slide to a single-page PDF and return its url. Kept to a
 // single id on purpose: a 20-id batch makes Figma render 20 PDFs inside
 // one request, which can outlast the serverless time budget — one render
-// is a couple of seconds and each slide caches independently.
+// is a couple of seconds and each slide caches independently. PDF renders
+// cache longer than page images (5 min vs 60s): the render is the whole
+// cost of a download, and a marginally staler PDF is a fine trade for a
+// retry or second download completing near-instantly.
+const PDF_REVALIDATE_SECONDS = 300;
+
 export async function fetchFigmaPdfUrl(fileKey: string, nodeId: string): Promise<string> {
-  const images = await fetchImagesBatch(fileKey, [nodeId], "pdf");
+  const images = await fetchImagesBatch(fileKey, [nodeId], "pdf", undefined, PDF_REVALIDATE_SECONDS);
   const url = images[nodeId];
   if (!url) {
     throw new Error("Figma가 PDF를 생성하지 못했습니다.");
