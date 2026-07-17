@@ -114,34 +114,28 @@ interface FigmaFileNode {
   children?: FigmaFileNode[];
 }
 
-export interface SlideNode {
-  id: string;
-  name: string;
+export interface SlideGroup {
+  title: string;
+  slideIds: string[];
 }
 
-// Enumerate the slides of a Figma Slides (presentation) file in deck order.
-// The file endpoint returns the document tree; SLIDE nodes sit under the
-// canvas (nested in SLIDE_GRID/SLIDE_ROW containers), and depth-first order
-// matches the deck's reading order. depth=4 is deep enough to reach SLIDE
-// nodes without pulling every slide's full contents into the payload.
-export async function fetchSlideNodes(fileKey: string): Promise<SlideNode[]> {
+// Read the deck structure live from the design file's Slide_All auto-layout
+// frame: its direct children are the TOC sections (layer name = section
+// title), and each section's own children are that section's individual
+// slides, in auto-layout order. depth=4 reaches those slide frames without
+// pulling every slide's full contents into the payload (canvas=1,
+// Slide_All=2, sections=3, slides=4).
+export async function fetchSlideGroups(
+  fileKey: string,
+  rootNodeId: string,
+  rootNodeName: string
+): Promise<SlideGroup[]> {
   const token = requireToken();
 
-  // depth caps the payload, but if Figma rejects the parameterized request
-  // (e.g. it's stricter about params on slides decks), retry bare before
-  // giving up — and surface Figma's own error body so failures are
-  // diagnosable from the page instead of an opaque status code.
-  let res = await fetch(`${FIGMA_API_BASE}/files/${fileKey}?depth=4`, {
+  const res = await fetch(`${FIGMA_API_BASE}/files/${fileKey}?depth=4`, {
     headers: { "X-Figma-Token": token },
     next: { revalidate: REVALIDATE_SECONDS },
   });
-
-  if (res.status === 400) {
-    res = await fetch(`${FIGMA_API_BASE}/files/${fileKey}`, {
-      headers: { "X-Figma-Token": token },
-      next: { revalidate: REVALIDATE_SECONDS },
-    });
-  }
 
   if (!res.ok) {
     const body = (await res.text().catch(() => "")).slice(0, 300);
@@ -153,21 +147,37 @@ export async function fetchSlideNodes(fileKey: string): Promise<SlideNode[]> {
     throw new Error("Figma 파일 응답에 document가 없습니다.");
   }
 
-  const slides: SlideNode[] = [];
-  const walk = (node: FigmaFileNode) => {
-    if (node.type === "SLIDE") {
-      slides.push({ id: node.id, name: node.name });
+  // Prefer the stable node id; fall back to the layer name so the deck
+  // survives the frame being recreated (copy-paste gives it a new id).
+  let root: FigmaFileNode | null = null;
+  const findRoot = (node: FigmaFileNode) => {
+    if (node.id === rootNodeId) {
+      root = node;
       return;
     }
-    node.children?.forEach(walk);
+    if (!root && node.name === rootNodeName && node.type === "FRAME") {
+      root = node;
+    }
+    if (node.id !== rootNodeId) node.children?.forEach(findRoot);
   };
-  walk(data.document);
+  findRoot(data.document);
 
-  if (slides.length === 0) {
-    throw new Error("파일에서 슬라이드를 찾지 못했습니다.");
+  if (!root) {
+    throw new Error(`"${rootNodeName}" 프레임을 파일에서 찾지 못했습니다.`);
   }
 
-  return slides;
+  const groups: SlideGroup[] = (root as FigmaFileNode).children
+    ?.map((section) => ({
+      title: section.name,
+      slideIds: (section.children ?? []).map((slide) => slide.id),
+    }))
+    .filter((group) => group.slideIds.length > 0) ?? [];
+
+  if (groups.length === 0) {
+    throw new Error(`"${rootNodeName}" 프레임 안에서 슬라이드를 찾지 못했습니다.`);
+  }
+
+  return groups;
 }
 
 // Despite requesting them together, Figma's images endpoint gives every

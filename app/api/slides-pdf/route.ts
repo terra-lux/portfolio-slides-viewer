@@ -1,14 +1,14 @@
 import { PDFDocument } from "pdf-lib";
-import { fetchFigmaPdfUrls, fetchSlideNodes } from "@/lib/figma-api";
-import { FIGMA_FILE_KEY } from "@/lib/figma-slides";
+import { fetchFigmaPdfUrls, fetchSlideGroups } from "@/lib/figma-api";
+import { FIGMA_FILE_KEY, SLIDE_ALL_NODE_ID, SLIDE_ALL_NODE_NAME } from "@/lib/figma-slides";
 
 export const revalidate = 60;
 export const maxDuration = 60;
 
 export async function GET() {
   try {
-    const slides = await fetchSlideNodes(FIGMA_FILE_KEY);
-    const nodeIds = slides.map((slide) => slide.id);
+    const groups = await fetchSlideGroups(FIGMA_FILE_KEY, SLIDE_ALL_NODE_ID, SLIDE_ALL_NODE_NAME);
+    const nodeIds = groups.flatMap((group) => group.slideIds);
     const pdfUrls = await fetchFigmaPdfUrls(FIGMA_FILE_KEY, nodeIds);
 
     // Download every slide's single-page PDF in parallel (there can be

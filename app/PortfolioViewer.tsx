@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { SlideNode } from "@/lib/figma-api";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import type { SlideGroup } from "@/lib/figma-api";
 
 const ZOOM_MIN = 50;
 const ZOOM_MAX = 200;
@@ -9,12 +9,12 @@ const ZOOM_STEP = 10;
 const DESKTOP_QUERY = "(min-width: 768px)";
 
 interface PortfolioViewerProps {
-  slides: SlideNode[];
+  groups: SlideGroup[];
   imageUrls: Record<string, string>;
   loadError: string | null;
 }
 
-export default function PortfolioViewer({ slides, imageUrls, loadError }: PortfolioViewerProps) {
+export default function PortfolioViewer({ groups, imageUrls, loadError }: PortfolioViewerProps) {
   const [zoom, setZoom] = useState(100);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -26,6 +26,21 @@ export default function PortfolioViewer({ slides, imageUrls, loadError }: Portfo
   // would otherwise stomp the just-clicked highlight before arrival.
   const isProgrammaticScrollRef = useRef(false);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Flat slide list plus flat-index <-> group-index mappings.
+  const { slides, groupOfSlide, groupStartIndex } = useMemo(() => {
+    const flat: { id: string; groupIndex: number }[] = [];
+    const starts: number[] = [];
+    groups.forEach((group, groupIndex) => {
+      starts.push(flat.length);
+      group.slideIds.forEach((id) => flat.push({ id, groupIndex }));
+    });
+    return {
+      slides: flat,
+      groupOfSlide: flat.map((slide) => slide.groupIndex),
+      groupStartIndex: starts,
+    };
+  }, [groups]);
 
   useEffect(() => {
     const mql = window.matchMedia(DESKTOP_QUERY);
@@ -77,9 +92,10 @@ export default function PortfolioViewer({ slides, imageUrls, loadError }: Portfo
       root.removeEventListener("scroll", armSettleTimer);
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
     };
-  }, []);
+  }, [slides.length]);
 
-  const scrollToSlide = (idx: number) => {
+  const scrollToGroup = (groupIndex: number) => {
+    const idx = groupStartIndex[groupIndex];
     // Set the highlight immediately instead of waiting for the smooth-scroll
     // to finish and the IntersectionObserver to catch up — otherwise
     // reopening the (mobile, auto-closing) sidebar right after a click shows
@@ -94,6 +110,8 @@ export default function PortfolioViewer({ slides, imageUrls, loadError }: Portfo
     slideRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" });
     if (!isDesktop) setSidebarOpen(false);
   };
+
+  const currentGroupIndex = groupOfSlide[currentIndex] ?? 0;
 
   if (loadError || slides.length === 0) {
     return (
@@ -135,19 +153,19 @@ export default function PortfolioViewer({ slides, imageUrls, loadError }: Portfo
       <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
         <div style={{ fontSize: 13, color: "#888", marginBottom: 16, marginTop: 40 }}>목차</div>
         <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-          {slides.map((slide, idx) => (
-            <li key={slide.id}>
+          {groups.map((group, groupIdx) => (
+            <li key={`${group.title}-${groupIdx}`}>
               <button
                 type="button"
-                onClick={() => scrollToSlide(idx)}
+                onClick={() => scrollToGroup(groupIdx)}
                 style={{
                   ...tocButtonStyle,
-                  background: idx === currentIndex ? "rgba(255,255,255,0.12)" : "transparent",
-                  color: idx === currentIndex ? "#fff" : "#999",
+                  background: groupIdx === currentGroupIndex ? "rgba(255,255,255,0.12)" : "transparent",
+                  color: groupIdx === currentGroupIndex ? "#fff" : "#999",
                 }}
               >
-                <span style={{ opacity: 0.5, marginRight: 8 }}>{String(idx + 1).padStart(2, "0")}</span>
-                {slide.name}
+                <span style={{ opacity: 0.5, marginRight: 8 }}>{String(groupIdx + 1).padStart(2, "0")}</span>
+                {group.title}
               </button>
             </li>
           ))}
@@ -192,7 +210,7 @@ export default function PortfolioViewer({ slides, imageUrls, loadError }: Portfo
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={imageUrls[slide.id]}
-                    alt={slide.name}
+                    alt={groups[slide.groupIndex]?.title ?? `슬라이드 ${idx + 1}`}
                     style={{ width: "100%", height: "100%", objectFit: "contain" }}
                     loading={idx < 2 ? "eager" : "lazy"}
                   />
