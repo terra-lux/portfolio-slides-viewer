@@ -115,13 +115,23 @@ a {
   }
 }
 
-@media (max-width: 640px) {
+/* Below the sidebar breakpoint (768px, same as the JS DESKTOP_QUERY):
+   full-viewport-height sections leave huge dead space around each slide on
+   a tall phone screen, so let slides stack at natural height instead. With
+   50+ slides there's plenty of scroll range for the TOC tracking either
+   way. */
+@media (max-width: 767px) {
   .slide-page {
-    padding: 16px;
+    min-height: 0;
+    padding: 8px 16px;
   }
 
   .slide-page:first-child {
     padding-top: 72px;
+  }
+
+  .slide-page:last-child {
+    padding-bottom: 88px;
   }
 
   .zoom-bar {
